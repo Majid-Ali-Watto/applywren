@@ -61,7 +61,6 @@ export async function middleware(request) {
 
     try {
       const token = authHeader.split(" ")[1].trim();
-      console.log("🚀 ~ middleware ~ token:", token)
       const { valid, error, data } = await verifyJWT(token, process.env.JWT_SECRET);
 
       if (!valid) {
