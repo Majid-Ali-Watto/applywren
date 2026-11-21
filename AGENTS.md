@@ -7,9 +7,9 @@ to be careful with.
 The product is called **Applywren**, and so is the GitHub repository
 (`Majid-Ali-Watto/applywren`). Some internal identifiers deliberately keep the
 old names: the `bulk-applier` package, the `bulk-applier` / `bulk-applier-test`
-databases, the local `bulk-email-sender` folder, and the Docker volume
-`bulk-email-sender_mongo-data`. Don't rename them as a side effect; the
-database and volume hold existing data.
+databases, and the Docker volume `bulk-email-sender_mongo-data` (pinned in
+`docker-compose.yml`). Don't rename them as a side effect; the database and
+volume hold existing data.
 The visible name, tagline and description live in `src/lib/site.js`, which
 feeds the page metadata, the share image (`app/opengraph-image.js`),
 `robots.js`, `sitemap.js` and `manifest.js`. The icons are `app/icon.svg`,

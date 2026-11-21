@@ -1,4 +1,6 @@
 # Local development services: `docker compose up -d`
+# Fixed project name, so containers are named the same whatever the folder is called.
+name: applywren
 services:
   mongo:
     image: mongo:7
