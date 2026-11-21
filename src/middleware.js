@@ -1,100 +1,71 @@
-// src/middleware.js
 import { NextResponse } from "next/server";
+import { sessionCookieName, verifyToken } from "@/lib/auth";
+import { contentSecurityPolicy, createNonce } from "@/lib/csp";
 
-// Define public routes that don't need authentication
-const PUBLIC_ROUTES = [
-  '/api/login',
-  '/api/register',
-  '/api/verify'
-];
+// Every /api route requires a signed-in session except these.
+const PUBLIC_ROUTES = ["/api/login", "/api/register", "/api/verify", "/api/password-reset", "/api/password-reset/confirm", "/api/logout"];
 
-// Define routes that should be protected
-const PROTECTED_ROUTES = [
-  '/api/applications',
-  '/api/documents',
-  '/api/sendEmails'
-];
-
-async function verifyJWT(token, secret) {
+/**
+ * Blocks cross-site requests that change things (CSRF), on top of the
+ * SameSite cookie. Browsers send Sec-Fetch-Site (or at least Origin) with
+ * every POST/PUT/DELETE.
+ */
+function isSameOrigin(request) {
+  if (["GET", "HEAD", "OPTIONS"].includes(request.method)) return true;
+  const site = request.headers.get("sec-fetch-site");
+  if (site) return site === "same-origin";
+  const origin = request.headers.get("origin");
+  const host = request.headers.get("x-forwarded-host") ?? request.headers.get("host");
   try {
-    // Split the token into parts
-    const [headerB64, payloadB64, signatureB64] = token.split('.');
-    
-    // Decode the payload
-    const payload = JSON.parse(atob(payloadB64));
-    
-    // Check if token has expired
-    if (payload.exp && Date.now() >= payload.exp * 1000) {
-      throw new Error('Token has expired');
-    }
-
-    return { valid: true, data: payload };
-  } catch (error) {
-    console.error('Token verification error:', error);
-    return { valid: false, error: error.message };
+    return Boolean(origin && host) && new URL(origin).host === host;
+  } catch {
+    return false;
   }
 }
 
+/** Pages: a fresh nonce per request, so only scripts Next.js emits can run. */
+function withPageSecurity(request) {
+  const nonce = createNonce();
+  const policy = contentSecurityPolicy(nonce, { dev: process.env.NODE_ENV !== "production" });
+  const headers = new Headers(request.headers);
+  headers.set("x-nonce", nonce);
+  headers.set("Content-Security-Policy", policy); // Next.js reads the nonce from here
+  const response = NextResponse.next({ request: { headers } });
+  response.headers.set("Content-Security-Policy", policy);
+  return response;
+}
+
 export async function middleware(request) {
-  const { pathname } = request.nextUrl;
+  if (!request.nextUrl.pathname.startsWith("/api/")) return withPageSecurity(request);
 
-  // Check if it's an API route
-  if (!pathname.startsWith('/api/')) {
+  if (!isSameOrigin(request)) {
+    return NextResponse.json({ error: "Cross-site request blocked" }, { status: 403 });
+  }
+
+  if (PUBLIC_ROUTES.includes(request.nextUrl.pathname)) return NextResponse.next();
+
+  // First line of defence: turn away requests without a valid session early.
+  // Routes verify the cookie again themselves (lib/accounts.js#currentUserId).
+  const token = request.cookies.get(sessionCookieName())?.value;
+  if (!token) return NextResponse.json({ error: "Please sign in." }, { status: 401 });
+  try {
+    await verifyToken(token);
     return NextResponse.next();
+  } catch {
+    return NextResponse.json({ error: "Your session has expired. Please sign in again." }, { status: 401 });
   }
-
-  // Allow public routes to pass through
-  if (PUBLIC_ROUTES.some(route => pathname.startsWith(route))) {
-    return NextResponse.next();
-  }
-
-  // Check if route should be protected
-  if (PROTECTED_ROUTES.some(route => pathname.startsWith(route))) {
-    const authHeader = request.headers.get("authorization");
-
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return NextResponse.json(
-        { error: "Missing or invalid authorization header" },
-        { status: 401 }
-      );
-    }
-
-    try {
-      const token = authHeader.split(" ")[1].trim();
-      const { valid, error, data } = await verifyJWT(token, process.env.JWT_SECRET);
-
-      if (!valid) {
-        return NextResponse.json(
-          { error: "Invalid or expired token", details: error },
-          { status: 401 }
-        );
-      }
-
-      // Add user info to request headers for route handlers
-      const requestHeaders = new Headers(request.headers);
-      requestHeaders.set('x-user-id', data.userId);
-      requestHeaders.set('x-user-email', data.email);
-
-      // Return response with modified headers
-      return NextResponse.next({
-        request: {
-          headers: requestHeaders,
-        },
-      });
-    } catch (error) {
-      console.error('Middleware error:', error);
-      return NextResponse.json(
-        { error: "Invalid or expired token", details: error.message },
-        { status: 401 }
-      );
-    }
-  }
-
-  return NextResponse.next();
 }
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico).*)',
+    "/api/:path*",
+    // Pages (not static files, images or prefetches, which carry no HTML).
+    {
+      source: "/((?!api|_next/static|_next/image|favicon.ico|icon.svg|apple-icon.png|opengraph-image|robots.txt|sitemap.xml|manifest.webmanifest).*)",
+      missing: [
+        { type: "header", key: "next-router-prefetch" },
+        { type: "header", key: "purpose", value: "prefetch" },
+      ],
+    },
   ],
 };

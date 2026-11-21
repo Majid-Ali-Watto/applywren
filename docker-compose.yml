@@ -1,0 +1,35 @@
+# Local development services: `docker compose up -d`
+services:
+  mongo:
+    image: mongo:7
+    ports:
+      - "127.0.0.1:27017:27017"
+    volumes:
+      - mongo-data:/data/db
+
+  # Catches all outgoing mail (verification codes, applications).
+  # Inbox UI: http://localhost:8025
+  mailpit:
+    image: axllent/mailpit:v1.27
+    ports:
+      - "127.0.0.1:1025:1025" # SMTP
+      - "127.0.0.1:8025:8025" # web UI
+
+  # Browse the database: http://localhost:8081 (login: MONGO_EXPRESS_* in .env)
+  mongo-express:
+    image: mongo-express:1.0.2
+    depends_on:
+      - mongo
+    ports:
+      - "127.0.0.1:8081:8081"
+    environment:
+      ME_CONFIG_MONGODB_URL: mongodb://mongo:27017/
+      ME_CONFIG_BASICAUTH: "true"
+      ME_CONFIG_BASICAUTH_USERNAME: ${MONGO_EXPRESS_USER:-admin}
+      ME_CONFIG_BASICAUTH_PASSWORD: ${MONGO_EXPRESS_PASSWORD:?Set MONGO_EXPRESS_PASSWORD in .env}
+
+volumes:
+  mongo-data:
+    # Fixed name: otherwise it comes from the folder name, and renaming the
+    # folder would start a new, empty database.
+    name: bulk-email-sender_mongo-data

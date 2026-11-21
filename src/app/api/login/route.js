@@ -1,57 +1,44 @@
 import { connectDB } from "@/lib/mongodb";
-import User from "@/models/User";
-import bcrypt from "bcryptjs";
-import { generateToken } from "@/utils/jwt";
+import { checkPassword, findUserByEmail, signedIn } from "@/lib/accounts";
+import { sendCode } from "@/lib/mailer";
+import { clearRateLimit, clientIp, countAttempt, LIMITS, rateLimit } from "@/lib/rateLimit";
+import { readJson, errorResponse } from "@/lib/http";
+import { normalizeEmail } from "@/lib/validate";
+
+const invalidCredentials = () => Response.json({ error: "Invalid email or password" }, { status: 401 });
 
 export async function POST(req) {
   try {
     await connectDB();
-    const { email, password } = await req.json();
+    const ip = clientIp(req);
+    await rateLimit("login", ip, "Too many sign-in attempts. Try again in 15 minutes.");
+    const { email, password } = await readJson(req);
+    if (typeof email !== "string" || typeof password !== "string") return invalidCredentials();
 
-    const user = await User.findOne({ email });
-
-    if (!user) {
-      return new Response(JSON.stringify({ error: "User not found" }), {
-        status: 404,
-      });
+    // Every attempt is counted before the password is checked (and the count
+    // cleared on success), so parallel guesses can't slip past the limit.
+    // 5 per address from one IP locks that IP out of the address; 30 per hour
+    // from anywhere slows spread-out guessing. Unknown addresses count the same,
+    // so a lockout doesn't reveal that an account exists. A reset lifts both.
+    const address = normalizeEmail(email);
+    const fromHere = await countAttempt("loginFailures", `${address}|${ip}`);
+    const fromAnywhere = await countAttempt("loginFailuresEmail", address);
+    if (fromHere > LIMITS.loginFailures.max || fromAnywhere > LIMITS.loginFailuresEmail.max) {
+      return Response.json({ error: "Too many failed attempts. Try again later, or reset your password." }, { status: 429 });
     }
 
-    const isValidPassword = await bcrypt.compare(password, user.password);
-
-    if (!isValidPassword) {
-      return new Response(JSON.stringify({ error: "Invalid password" }), {
-        status: 401,
-      });
-    }
+    // Always runs bcrypt (against a dummy hash for unknown emails), so timing doesn't reveal accounts.
+    const user = await findUserByEmail(address);
+    if (!(await checkPassword(password, user)) || !user) return invalidCredentials();
+    await Promise.all([clearRateLimit("loginFailures", `${address}|${ip}`), clearRateLimit("loginFailuresEmail", address)]);
 
     if (!user.verified) {
-      // Generate new verification code and send email
-      const code = Math.floor(100000 + Math.random() * 900000).toString();
-      user.verificationCode = code;
-      user.verificationCodeExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
-      await user.save();
-
-      // Send new verification email...
-      return new Response(JSON.stringify({ needsVerification: true }), {
-        status: 200,
-      });
+      // Silently skipped if a code was sent less than a minute ago.
+      await sendCode(user, "verify");
+      return Response.json({ needsVerification: true });
     }
-
-    const token = generateToken(user);
-
-    return new Response(
-      JSON.stringify({
-        authenticated: true,
-        email: user.email,
-        userId: user._id.toString(), // Add this line
-        token,
-      }),
-      { status: 200 }
-    );
+    return signedIn(user);
   } catch (error) {
-    console.error("Login error:", error);
-    return new Response(JSON.stringify({ error: "Login failed" }), {
-      status: 500,
-    });
+    return errorResponse(error, "Login");
   }
 }

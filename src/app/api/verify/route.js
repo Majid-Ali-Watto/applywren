@@ -1,37 +1,36 @@
 import { connectDB } from "@/lib/mongodb";
-import User from "@/models/User";
+import { checkPassword, consumeCode, signedIn } from "@/lib/accounts";
+import { clientIp, rateLimit } from "@/lib/rateLimit";
+import { readJson, errorResponse } from "@/lib/http";
 
+const invalidCode = () =>
+  Response.json({ error: "Invalid or expired code. Request a new one if needed." }, { status: 400 });
+
+/**
+ * Verifies a new account. The password chosen at sign-up is required too, so
+ * someone who re-registers the address with their own password can't have the
+ * real owner's code verify an account they control.
+ */
 export async function POST(req) {
   try {
     await connectDB();
-    const { email, code } = await req.json();
+    await rateLimit("code", clientIp(req));
+    const { email, code, password } = await readJson(req);
+    if (typeof email !== "string") return invalidCode();
 
-    const user = await User.findOne({
-      email,
-      verificationCode: code,
-      verificationCodeExpires: { $gt: new Date() },
-    });
-
-    if (!user) {
-      return new Response(
-        JSON.stringify({ verified: false, error: "Invalid or expired code" }),
+    const user = await consumeCode(email, code, { unverifiedOnly: true });
+    if (!user) return invalidCode();
+    if (!(await checkPassword(password, user))) {
+      return Response.json(
+        { error: "That's not the password this account was created with. Sign up again to set a new one." },
         { status: 400 }
       );
     }
 
-    // Mark as verified and clear verification code
     user.verified = true;
-    user.verificationCode = null;
-    user.verificationCodeExpires = null;
     await user.save();
-
-    return new Response(JSON.stringify({ verified: true, email: user.email }), {
-      status: 200,
-    });
+    return signedIn(user);
   } catch (error) {
-    console.error("Verification error:", error);
-    return new Response(JSON.stringify({ error: "Verification failed" }), {
-      status: 500,
-    });
+    return errorResponse(error, "Verification");
   }
 }

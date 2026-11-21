@@ -1,0 +1,8 @@
+Email,Name,Company,Role,CC
+hr@acme.test,Ann Lee,Acme Corp,Frontend Developer,
+jane.doe@globex.test,,,Frontend Developer,
+careers@initech.test,Carla Diaz,,Backend Developer,
+mark.chen@umbrella-labs.test,,,Backend Developer,referrer@umbrella-labs.test
+talent@hooli.test,,Hooli,Product Designer,
+sara.khan@gmail.test,Sara Khan,Pied Piper,Product Designer,
+jobs@soylent.test,,,,

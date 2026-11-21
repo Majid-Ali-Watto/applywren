@@ -1,72 +1,77 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+@theme {
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 }
-
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Verdana, Geneva, Tahoma, sans-serif;
+  @apply bg-slate-50 text-slate-900 antialiased;
 }
 
-/* Quill custom font sizes */
+/* Native <dialog> backdrop used by Modal */
+dialog::backdrop {
+  background: rgb(15 23 42 / 0.5);
+  backdrop-filter: blur(2px);
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-toast-in { animation: toast-in 160ms ease-out; }
+
+/* ---- Quill editor, restyled to match the app ---- */
+.editor .ql-toolbar.ql-snow {
+  @apply border-0 border-b border-slate-200 bg-slate-50 rounded-t-lg px-2;
+  font-family: inherit;
+}
+.editor .ql-container.ql-snow {
+  @apply border-0 text-[15px];
+  font-family: inherit;
+}
+.editor .ql-editor {
+  @apply min-h-64 leading-relaxed text-slate-800;
+}
+.editor .ql-editor.ql-blank::before {
+  @apply text-slate-400 not-italic;
+}
+
+/* Quill custom font sizes (see QuillEditor size whitelist) */
 .ql-snow .ql-picker.ql-size .ql-picker-label[data-value="10px"]::before,
-.ql-snow .ql-picker.ql-size .ql-picker-item[data-value="10px"]::before {
-  content: '10px';
-  font-size: 10px;
-}
+.ql-snow .ql-picker.ql-size .ql-picker-item[data-value="10px"]::before { content: "10px"; font-size: 10px; }
 .ql-snow .ql-picker.ql-size .ql-picker-label[data-value="12px"]::before,
-.ql-snow .ql-picker.ql-size .ql-picker-item[data-value="12px"]::before {
-  content: '12px';
-  font-size: 12px;
-}
+.ql-snow .ql-picker.ql-size .ql-picker-item[data-value="12px"]::before { content: "12px"; font-size: 12px; }
 .ql-snow .ql-picker.ql-size .ql-picker-label[data-value="14px"]::before,
-.ql-snow .ql-picker.ql-size .ql-picker-item[data-value="14px"]::before {
-  content: '14px';
-  font-size: 14px;
-}
+.ql-snow .ql-picker.ql-size .ql-picker-item[data-value="14px"]::before { content: "14px"; font-size: 14px; }
 .ql-snow .ql-picker.ql-size .ql-picker-label[data-value="16px"]::before,
-.ql-snow .ql-picker.ql-size .ql-picker-item[data-value="16px"]::before {
-  content: '16px';
-  font-size: 16px;
-}
-.ql-snow .ql-picker.ql-size .ql-picker-label[data-value="18px"]/* filepath: /home/aslase/Documents/bulk-applier/src/app/globals.css */
-/* Quill custom font sizes */
-.ql-snow .ql-picker.ql-size .ql-picker-label[data-value="10px"]::before,
-.ql-snow .ql-picker.ql-size .ql-picker-item[data-value="10px"]::before {
-  content: '10px';
-  font-size: 10px;
-}
-.ql-snow .ql-picker.ql-size .ql-picker-label[data-value="12px"]::before,
-.ql-snow .ql-picker.ql-size .ql-picker-item[data-value="12px"]::before {
-  content: '12px';
-  font-size: 12px;
-}
-.ql-snow .ql-picker.ql-size .ql-picker-label[data-value="14px"]::before,
-.ql-snow .ql-picker.ql-size .ql-picker-item[data-value="14px"]::before {
-  content: '14px';
-  font-size: 14px;
-}
-.ql-snow .ql-picker.ql-size .ql-picker-label[data-value="16px"]::before,
-.ql-snow .ql-picker.ql-size .ql-picker-item[data-value="16px"]::before {
-  content: '16px';
-  font-size: 16px;
-}
+.ql-snow .ql-picker.ql-size .ql-picker-item[data-value="16px"]::before { content: "16px"; font-size: 16px; }
 .ql-snow .ql-picker.ql-size .ql-picker-label[data-value="18px"]::before,
-.ql-snow .ql-picker.ql-size .ql-picker-item[data-value="18px"]::before {
-  content: '18px';
-  font-size: 18px;
-}
+.ql-snow .ql-picker.ql-size .ql-picker-item[data-value="18px"]::before { content: "18px"; font-size: 18px; }
 .ql-snow .ql-picker.ql-size .ql-picker-label[data-value="24px"]::before,
-.ql-snow .ql-picker.ql-size .ql-picker-item[data-value="24px"]::before {
-  content: '24px';
-  font-size: 24px;
-}
+.ql-snow .ql-picker.ql-size .ql-picker-item[data-value="24px"]::before { content: "24px"; font-size: 24px; }
 .ql-snow .ql-picker.ql-size .ql-picker-label[data-value="32px"]::before,
-.ql-snow .ql-picker.ql-size .ql-picker-item[data-value="32px"]::before {
-  content: '32px';
-  font-size: 32px;
-}
+.ql-snow .ql-picker.ql-size .ql-picker-item[data-value="32px"]::before { content: "32px"; font-size: 32px; }
+
+/* Rendered letter HTML (preview, history) */
+/* Matches the editor (and the inline styles added to sent emails). */
+.letter p { margin: 0; }
+.letter ul, .letter ol { padding-left: 1.5em; margin: 0.25em 0; }
+.letter ul, .letter li[data-list="bullet"] { list-style-type: disc; }
+.letter ol > li[data-list="ordered"] { list-style-type: decimal; }
+.letter .ql-ui { display: none; }
+.letter mark { @apply rounded bg-amber-100 px-0.5 text-amber-900; }
+.letter a { @apply text-indigo-600 underline; }
+.letter h1 { @apply text-2xl font-semibold mb-2; }
+.letter h2 { @apply text-xl font-semibold mb-2; }
+.letter blockquote { @apply border-l-4 border-slate-200 pl-3 text-slate-600; }
+
+/* Privacy Policy and Terms of Service (components/LegalPage.js) */
+.legal h2 { @apply mt-10 mb-3 text-xl font-semibold tracking-tight text-slate-900; }
+.legal h3 { @apply mt-6 mb-2 text-base font-semibold text-slate-900; }
+.legal p { @apply my-3 leading-relaxed text-slate-700; }
+.legal ul { @apply my-3 list-disc space-y-1.5 pl-6 text-slate-700; }
+.legal li { @apply leading-relaxed; }
+.legal a { @apply font-medium text-indigo-600 underline underline-offset-2 hover:text-indigo-500; }
+.legal strong { @apply font-semibold text-slate-900; }
+.legal mark { @apply rounded bg-amber-100 px-1 text-amber-900; }

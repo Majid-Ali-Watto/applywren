@@ -1,60 +1,65 @@
 "use client";
-import React, { useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import "quill/dist/quill.snow.css";
+import { safeHtml } from "@/utils/safeHtml";
 
-export default function QuillEditor({ initialContent = "", onReady }) {
+const SIZES = ["10px", "12px", "14px", "16px", "18px", "24px", "32px"];
+const TOOLBAR = [
+  [{ header: [1, 2, 3, false] }, { size: [...SIZES, false] }],
+  ["bold", "italic", "underline", "strike"],
+  [{ color: [] }, { background: [] }],
+  [{ list: "ordered" }, { list: "bullet" }, { indent: "-1" }, { indent: "+1" }],
+  [{ align: [] }],
+  ["link", "blockquote"],
+  ["clean"],
+];
+
+/**
+ * Rich-text editor. Remount (change `key`) to load different content.
+ * onReady(quill) exposes the instance; onChange(html, text) fires on every edit.
+ */
+export default function QuillEditor({ initialContent = "", onReady, onChange, placeholder }) {
   const editorRef = useRef(null);
-  const quillRef = useRef(null);
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
 
   useEffect(() => {
-    const initialize = async () => {
-      if (typeof window === "undefined") return;
+    let cancelled = false; // guards double-mount in React strict mode
+    let quill;
 
-      const QuillModule = await import("quill");
-      const Quill = QuillModule.default;
+    (async () => {
+      const Quill = (await import("quill")).default;
+      if (cancelled || !editorRef.current) return;
 
       const Size = Quill.import("attributors/style/size");
-      Size.whitelist = ["10px", "12px", "14px", "16px", "18px", "24px", "32px"];
+      Size.whitelist = SIZES;
       Quill.register(Size, true);
 
-      const toolbarOptions = [
-        ["bold", "italic", "underline", "strike"],
-        ["blockquote", "code-block"],
-        ["link", "image", "video", "formula"],
-        [{ header: 1 }, { header: 2 }],
-        [{ list: "ordered" }, { list: "bullet" }],
-        [{ script: "sub" }, { script: "super" }],
-        [{ indent: "-1" }, { indent: "+1" }],
-        [{ direction: "rtl" }],
-        [{ size: ["10px", "12px", "14px", "16px", "18px", "24px", "32px", false] }],
-        [{ header: [1, 2, 3, 4, 5, 6, false] }],
-        [{ color: [] }, { background: [] }],
-        [{ font: [] }],
-        [{ align: [] }],
-        ["clean"],
-      ];
-
-      const quill = new Quill(editorRef.current, {
+      quill = new Quill(editorRef.current, {
         theme: "snow",
-        placeholder: "Write your cover letter here...",
-        modules: { toolbar: toolbarOptions },
+        placeholder: placeholder || "Write your cover letter…",
+        modules: { toolbar: TOOLBAR },
       });
+      quill.root.innerHTML = safeHtml(initialContent);
+      quill.update();
+      quill.history.clear();
 
-      quill.root.innerHTML = initialContent || "";
+      const emit = () => onChangeRef.current?.(quill.root.innerHTML, quill.getText());
+      quill.on("text-change", emit);
+      emit();
+      onReady?.(quill);
+    })();
 
-      if (onReady) {
-        onReady(quill);
-      }
-
-      quillRef.current = quill;
+    return () => {
+      cancelled = true;
+      quill?.off("text-change");
     };
-
-    initialize();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- content is loaded once per mount
   }, []);
 
   return (
-    <div className="border border-gray-300 rounded bg-white p-2 min-h-[150px]">
-      <div ref={editorRef} className="min-h-[150px]" />
+    <div className="editor rounded-lg border border-slate-300 bg-white shadow-sm focus-within:border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-500/20">
+      <div ref={editorRef} />
     </div>
   );
 }

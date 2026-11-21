@@ -1,64 +1,46 @@
 import { connectDB } from "@/lib/mongodb";
 import User from "@/models/User";
-import nodemailer from "nodemailer";
-import bcrypt from "bcryptjs";
+import { findUserByEmail, hashPassword } from "@/lib/accounts";
+import { sendAccountExistsNotice, sendCode } from "@/lib/mailer";
+import { clientIp, rateLimit } from "@/lib/rateLimit";
+import { afterResponse, readJson, errorResponse } from "@/lib/http";
+import { assert, isEmail, normalizeEmail, passwordProblem } from "@/lib/validate";
 
 export async function POST(req) {
   try {
     await connectDB();
-    const { email, password } = await req.json();
+    await rateLimit("register", clientIp(req), "Too many sign-ups from your network. Try again in an hour.");
+    const body = await readJson(req);
+    const email = normalizeEmail(body.email);
+    const name = body.name ?? "";
+    assert(isEmail(email), "Enter a valid email address");
+    const problem = passwordProblem(body.password, email);
+    assert(!problem, problem);
+    assert(typeof name === "string" && name.trim().length <= 100, "Name is too long");
 
-    // Check if user exists
-    let user = await User.findOne({ email });
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    if (user) {
-      // If user exists but not verified, update verification code
-      if (!user.verified) {
-        user.verificationCode = code;
-        user.verificationCodeExpires = new Date(
-          Date.now() + 24 * 60 * 60 * 1000
-        ); // 24 hours
-        await user.save();
-      } else {
-        return new Response(
-          JSON.stringify({ error: "Email already registered and verified" }),
-          { status: 400 }
-        );
-      }
-    } else {
-      // Create new user
-      user = await User.create({
-        email,
-        password: hashedPassword,
-        verified: false,
-        verificationCode: code,
-        verificationCodeExpires: new Date(Date.now() + 24 * 60 * 60 * 1000),
-      });
+    // Every path hashes the password and sends its email after responding, and
+    // all answer { ok: true }, so neither the answer nor its timing reveals
+    // whether the address already has an account.
+    const password = await hashPassword(body.password);
+    let user = await findUserByEmail(email);
+    if (user?.verified) {
+      // The owner gets an email saying someone tried to sign up.
+      await afterResponse(() => sendAccountExistsNotice(user), "Account-exists notice");
+      return Response.json({ ok: true });
     }
 
-    // Send verification email
-    const transporter = nodemailer.createTransport({
-      service: "Gmail",
-      auth: {
-        user: process.env.FROM,
-        pass: process.env.GMAIL_PASS,
-      },
-    });
-
-    await transporter.sendMail({
-      from: process.env.FROM,
-      to: email,
-      subject: "Your Verification Code",
-      text: `Your verification code is: ${code}`,
-    });
-
-    return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    // Unverified: whoever proves they own the address (code + this password) gets it.
+    if (user) {
+      user.password = password;
+      if (name.trim()) user.name = name.trim();
+    } else {
+      user = new User({ email, password, name: name.trim() });
+    }
+    await user.save();
+    // At most one code a minute; a quicker retry is silently skipped.
+    await afterResponse(() => sendCode(user, "verify"), "Verification code");
+    return Response.json({ ok: true });
   } catch (error) {
-    console.error("Registration error:", error);
-    return new Response(JSON.stringify({ error: "Registration failed" }), {
-      status: 500,
-    });
+    return errorResponse(error, "Registration");
   }
 }
